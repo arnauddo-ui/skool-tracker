@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Revenus — Skool Tracker{% endblock %}
+{% block content %}
+<div class="kpi-grid" id="revKpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Répartition Free / Payant</h3><canvas id="freePaidChart"></canvas></div>
+    <div class="chart-card"><h3>Revenus par mois (nouveaux membres)</h3><canvas id="monthlyRevChart"></canvas></div>
+</div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Distribution des prix</h3><canvas id="priceChart"></canvas></div>
+    <div class="chart-card"><h3>Distribution LTV</h3><canvas id="ltvChart"></canvas></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load(){
+    const d=await(await fetch('/api/revenue')).json();
+    const o=await(await fetch('/api/overview')).json();
+    document.getElementById('revKpis').innerHTML=`
+        <div class="kpi-card"><div class="kpi-value">\$${o.mrr.toLocaleString()}</div><div class="kpi-label">MRR</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.paid}</div><div class="kpi-label">Membres payants</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.free}</div><div class="kpi-label">Membres gratuits</div></div>
+        <div class="kpi-card"><div class="kpi-value">\$${o.avg_ltv}</div><div class="kpi-label">LTV moyen</div></div>
+    `;
+    new Chart('freePaidChart',{type:'doughnut',data:{labels:['Payants','Gratuits'],datasets:[{data:[d.paid,d.free],backgroundColor:['#6c5ce7','#636e72'],borderWidth:0}]},options:{responsive:true,cutout:'65%',plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}}});
+    const mr=d.monthly_revenue;
+    new Chart('monthlyRevChart',{type:'bar',data:{labels:mr.map(r=>r.month),datasets:[{label:'Revenus ($)',data:mr.map(r=>r.revenue),backgroundColor:'#00b894'}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}}}}});
+    new Chart('priceChart',{type:'bar',data:{labels:d.prices.map(r=>'$'+r.price),datasets:[{label:'Membres',data:d.prices.map(r=>r.count),backgroundColor:'#0984e3'}]},options:{responsive:true,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{grid:{display:false},ticks:{color:'#e8eaf0'}}}}});
+    new Chart('ltvChart',{type:'bar',data:{labels:d.ltv_buckets.map(r=>'$'+r.bucket),datasets:[{label:'Membres',data:d.ltv_buckets.map(r=>r.count),backgroundColor:'#fdcb6e'}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}});
+}
+load();
+</script>
+{% endblock %}

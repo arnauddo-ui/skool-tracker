@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Skool Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📊 Skool Tracker</div>
+        <div class="nav-links">
+            <a href="/dashboard" class="{% if request.path == '/dashboard' or request.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/growth" class="{% if request.path == '/growth' %}active{% endif %}">Croissance</a>
+            <a href="/revenue" class="{% if request.path == '/revenue' %}active{% endif %}">Revenus</a>
+            <a href="/referrals" class="{% if request.path == '/referrals' %}active{% endif %}">Parrainages</a>
+            <a href="/forecast" class="{% if request.path == '/forecast' %}active{% endif %}">Prévisions</a>
+            <a href="/channels" class="{% if request.path == '/channels' %}active{% endif %}">Canaux</a>
+            <a href="/members" class="{% if request.path == '/members' %}active{% endif %}">Membres</a>
+            <a href="/upload" class="{% if request.path == '/upload' %}active{% endif %}">📥 Upload</a>
+            <a href="/links" class="{% if request.path == '/links' %}active{% endif %}">🔗 Liens</a>
+            {% if session.get('role') == 'admin' %}
+            <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">⚙️</a>
+            {% endif %}
+            <span class="nav-user">{{ session.get('username', '') }}</span>
+            <a href="/logout" class="nav-logout">↪</a>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="container" style="padding-bottom:0">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

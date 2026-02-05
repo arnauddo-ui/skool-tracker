@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Parrainages — Skool Tracker{% endblock %}
+{% block content %}
+<div class="kpi-grid" id="refKpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Organique vs Parrainage</h3><canvas id="pieChart"></canvas></div>
+    <div class="chart-card"><h3>Évolution mensuelle</h3><canvas id="monthlyChart"></canvas></div>
+</div>
+<div class="card">
+    <h3>🏆 Top Parrains</h3>
+    <div id="topList" class="ranking-list"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load(){
+    const d=await(await fetch('/api/referrals')).json();
+    const total=d.organic+d.referral;
+    const pct=total>0?Math.round(d.referral/total*100):0;
+    document.getElementById('refKpis').innerHTML=`
+        <div class="kpi-card"><div class="kpi-value">${d.referral}</div><div class="kpi-label">Via parrainage</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.organic}</div><div class="kpi-label">Organique</div></div>
+        <div class="kpi-card"><div class="kpi-value">${pct}%</div><div class="kpi-label">Taux de parrainage</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.top_referrers.length}</div><div class="kpi-label">Parrains actifs</div></div>
+    `;
+    new Chart('pieChart',{type:'doughnut',data:{labels:['Parrainage','Organique'],datasets:[{data:[d.referral,d.organic],backgroundColor:['#6c5ce7','#636e72'],borderWidth:0}]},options:{responsive:true,cutout:'65%',plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}}});
+    const m=d.monthly;
+    new Chart('monthlyChart',{type:'bar',data:{labels:m.map(r=>r.month),datasets:[{label:'Parrainage',data:m.map(r=>r.referrals),backgroundColor:'#6c5ce7'},{label:'Organique',data:m.map(r=>r.organic),backgroundColor:'#636e72'}]},options:{responsive:true,scales:{x:{stacked:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{stacked:true,beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}},plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}}});
+    const maxR=d.top_referrers[0]?.count||1;
+    document.getElementById('topList').innerHTML=d.top_referrers.map((r,i)=>`
+        <div class="ranking-item">
+            <div class="ranking-pos">#${i+1}</div>
+            <div class="ranking-channel" style="min-width:180px"><strong>${r.name}</strong></div>
+            <div class="ranking-bar-wrapper"><div class="ranking-bar" style="width:${r.count/maxR*100}%;background:#6c5ce7"></div></div>
+            <div class="ranking-count">${r.count} filleul${r.count>1?'s':''}</div>
+        </div>`).join('');
+}
+load();
+</script>
+{% endblock %}

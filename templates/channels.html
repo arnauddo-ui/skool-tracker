@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Canaux — Skool Tracker{% endblock %}
+{% block content %}
+<div class="filters">
+    <div class="filter-group"><label>Période :</label>
+        <select id="period"><option value="7">7j</option><option value="30" selected>30j</option><option value="90">90j</option><option value="365">1 an</option></select>
+    </div>
+</div>
+<div class="kpi-grid" id="clickKpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Répartition par canal</h3><canvas id="pieChart"></canvas></div>
+    <div class="chart-card"><h3>Évolution des clics</h3><canvas id="lineChart"></canvas></div>
+</div>
+<div class="card"><h3>🏆 Classement des canaux</h3><div id="ranking" class="ranking-list"></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CC={'youtube':'#ff0033','linkedin':'#0077b5','instagram':'#e1306c','tiktok':'#00f2ea','x':'#1da1f2','facebook':'#1877f2','newsletter':'#f39c12','google-ads':'#34a853','reddit':'#ff4500','substack':'#ff6719','direct':'#a29bfe','autre':'#636e72'};
+let ch1,ch2;
+async function load(){
+    if(ch1)ch1.destroy();if(ch2)ch2.destroy();
+    const days=document.getElementById('period').value;
+    const d=await(await fetch('/api/clicks?days='+days)).json();
+    const channels=Object.keys(d.by_channel), vals=Object.values(d.by_channel);
+    document.getElementById('clickKpis').innerHTML=`
+        <div class="kpi-card"><div class="kpi-value">${d.total}</div><div class="kpi-label">Clics totaux</div></div>
+        <div class="kpi-card"><div class="kpi-value">${channels.length}</div><div class="kpi-label">Canaux actifs</div></div>
+        <div class="kpi-card"><div class="kpi-value">${channels[0]||'—'}</div><div class="kpi-label">Meilleur canal</div></div>
+    `;
+    ch1=new Chart('pieChart',{type:'doughnut',data:{labels:channels,datasets:[{data:vals,backgroundColor:channels.map(c=>CC[c]||'#6c5ce7'),borderWidth:0}]},options:{responsive:true,cutout:'65%',plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}}});
+    const allDays=Object.keys(d.daily_by_channel).sort();
+    const allCh=new Set();Object.values(d.daily_by_channel).forEach(o=>Object.keys(o).forEach(c=>allCh.add(c)));
+    ch2=new Chart('lineChart',{type:'line',data:{labels:allDays.map(d=>d.slice(5)),datasets:[...allCh].map(c=>({label:c,data:allDays.map(day=>(d.daily_by_channel[day]||{})[c]||0),borderColor:CC[c]||'#6c5ce7',tension:0.3,pointRadius:2}))},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3',font:{size:11}}}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}});
+    const mx=vals[0]||1;
+    document.getElementById('ranking').innerHTML=channels.map((c,i)=>`
+        <div class="ranking-item"><div class="ranking-pos">#${i+1}</div>
+        <div class="ranking-channel"><span class="channel-badge channel-${c}">${c}</span></div>
+        <div class="ranking-bar-wrapper"><div class="ranking-bar" style="width:${d.by_channel[c]/mx*100}%;background:${CC[c]||'#6c5ce7'}"></div></div>
+        <div class="ranking-count">${d.by_channel[c]} clics</div></div>`).join('');
+}
+document.getElementById('period').addEventListener('change',load);
+load();
+</script>
+{% endblock %}

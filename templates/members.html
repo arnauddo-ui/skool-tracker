@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Membres — Skool Tracker{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="filters" style="margin-bottom:1rem">
+        <input type="text" id="search" placeholder="Rechercher un membre..." style="flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.5rem 1rem;border-radius:8px;font-size:0.9rem">
+        <select id="sortBy"><option value="joined_at">Date d'inscription</option><option value="ltv">LTV</option><option value="first_name">Nom</option><option value="price">Prix</option></select>
+        <select id="sortOrder"><option value="DESC">↓ Desc</option><option value="ASC">↑ Asc</option></select>
+    </div>
+    <div class="table-wrapper">
+        <table><thead><tr><th>Nom</th><th>Email</th><th>Inscription</th><th>Parrain</th><th>Prix</th><th>Tier</th><th>LTV</th></tr></thead>
+        <tbody id="membersBody"></tbody></table>
+    </div>
+    <div id="memberCount" style="margin-top:1rem;color:var(--text-muted);font-size:0.85rem"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let timer;
+async function load(){
+    const s=document.getElementById('search').value;
+    const sort=document.getElementById('sortBy').value;
+    const order=document.getElementById('sortOrder').value;
+    const d=await(await fetch(`/api/members?search=${encodeURIComponent(s)}&sort=${sort}&order=${order}`)).json();
+    document.getElementById('memberCount').textContent=`${d.length} membre(s)`;
+    document.getElementById('membersBody').innerHTML=d.map(m=>`<tr>
+        <td><strong>${m.first_name} ${m.last_name}</strong></td>
+        <td style="color:var(--text-secondary);font-size:0.85rem">${m.email}</td>
+        <td>${m.joined_at.slice(0,10)}</td>
+        <td>${m.invited_by?'<span style="color:var(--accent)">'+m.invited_by+'</span>':'<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${m.price>0?'$'+m.price:'<span style="color:var(--text-muted)">gratuit</span>'}</td>
+        <td><span class="channel-badge" style="background:${m.tier==='premium'?'rgba(253,203,110,0.15)':'rgba(108,92,231,0.15)'};color:${m.tier==='premium'?'#fdcb6e':'#6c5ce7'}">${m.tier||'—'}</span></td>
+        <td>$${m.ltv}</td>
+    </tr>`).join('');
+}
+document.getElementById('search').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(load,300);});
+document.getElementById('sortBy').addEventListener('change',load);
+document.getElementById('sortOrder').addEventListener('change',load);
+load();
+</script>
+{% endblock %}

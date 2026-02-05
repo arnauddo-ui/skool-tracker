@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Skool Tracker{% endblock %}
+{% block content %}
+<div class="kpi-grid" id="kpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Nouveaux membres / mois</h3><canvas id="monthlyChart"></canvas></div>
+    <div class="chart-card"><h3>Croissance cumulée</h3><canvas id="cumulChart"></canvas></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load() {
+    const d = await (await fetch('/api/overview')).json();
+    document.getElementById('kpis').innerHTML = `
+        <div class="kpi-card"><div class="kpi-value">${d.total_members}</div><div class="kpi-label">Membres total</div></div>
+        <div class="kpi-card"><div class="kpi-value">+${d.this_month_new}</div><div class="kpi-label">Ce mois-ci</div></div>
+        <div class="kpi-card ${d.growth_pct>=0?'kpi-success':'kpi-danger'}"><div class="kpi-value">${d.growth_pct>0?'+':''}${d.growth_pct}%</div><div class="kpi-label">Croissance vs mois dernier</div></div>
+        <div class="kpi-card"><div class="kpi-value">$${d.mrr.toLocaleString()}</div><div class="kpi-label">MRR</div></div>
+        <div class="kpi-card"><div class="kpi-value">$${d.avg_ltv}</div><div class="kpi-label">LTV moyen</div></div>
+        <div class="kpi-card"><div class="kpi-value">$${d.total_ltv.toLocaleString()}</div><div class="kpi-label">LTV total</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.referral_pct}%</div><div class="kpi-label">Via parrainage</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.referral_count}</div><div class="kpi-label">Parrainés</div></div>
+    `;
+    const months = d.monthly.map(m => m.month);
+    const counts = d.monthly.map(m => m.count);
+    const cumul = []; let t=0; counts.forEach(c => { t+=c; cumul.push(t); });
+
+    new Chart('monthlyChart', {type:'bar', data:{labels:months, datasets:[{label:'Nouveaux',data:counts,backgroundColor:'#6c5ce7'}]}, options:{...chartOpts(), plugins:{legend:{display:false}}}});
+    new Chart('cumulChart', {type:'line', data:{labels:months, datasets:[{label:'Total',data:cumul,borderColor:'#00b894',backgroundColor:'rgba(0,184,148,0.1)',fill:true,tension:0.3}]}, options:{...chartOpts(), plugins:{legend:{display:false}}}});
+}
+function chartOpts(){return{responsive:true,scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}}
+load();
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Paramètres — Skool Tracker{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>🔑 Changer mon mot de passe</h2>
+    <form method="POST" action="/change-password" style="max-width:400px;margin-top:1rem">
+        <div class="form-group"><label>Ancien mot de passe</label><input type="password" name="old_password" required></div>
+        <div class="form-group"><label>Nouveau mot de passe</label><input type="password" name="new_password" required minlength="4"></div>
+        <button type="submit" class="btn btn-primary">Modifier</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>👥 Gestion des utilisateurs</h2>
+    <div style="display:flex;gap:0.75rem;align-items:end;margin:1rem 0;flex-wrap:wrap">
+        <div class="form-group" style="margin:0"><label>Identifiant</label><input type="text" id="newUser" placeholder="nom"></div>
+        <div class="form-group" style="margin:0"><label>Mot de passe</label><input type="password" id="newPass" placeholder="motdepasse"></div>
+        <div class="form-group" style="margin:0"><label>Rôle</label>
+            <select id="newRole"><option value="viewer">Lecteur</option><option value="admin">Admin</option></select>
+        </div>
+        <button class="btn btn-primary" onclick="createUser()">Créer</button>
+    </div>
+    <div id="msg"></div>
+    <div class="table-wrapper">
+        <table><thead><tr><th>ID</th><th>Utilisateur</th><th>Rôle</th><th>Créé le</th><th>Actions</th></tr></thead>
+        <tbody id="usersBody"></tbody></table>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadUsers(){
+    const d=await(await fetch('/api/users')).json();
+    document.getElementById('usersBody').innerHTML=d.map(u=>`<tr>
+        <td>${u.id}</td><td><strong>${u.username}</strong></td>
+        <td><span class="channel-badge" style="background:${u.role==='admin'?'rgba(253,203,110,0.15)':'rgba(108,92,231,0.15)'};color:${u.role==='admin'?'#fdcb6e':'#6c5ce7'}">${u.role}</span></td>
+        <td>${u.created_at}</td>
+        <td style="display:flex;gap:0.5rem">
+            <button class="btn btn-copy" onclick="changePass(${u.id},'${u.username}')">🔑</button>
+            <button class="btn btn-copy" style="color:var(--danger)" onclick="deleteUser(${u.id},'${u.username}')">🗑️</button>
+        </td></tr>`).join('');
+}
+async function createUser(){
+    const u=document.getElementById('newUser').value,p=document.getElementById('newPass').value,r=document.getElementById('newRole').value;
+    const res=await(await fetch('/api/users/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p,role:r})})).json();
+    document.getElementById('msg').innerHTML=`<div class="alert alert-${res.error?'error':'success'}">${res.error||res.message}</div>`;
+    if(!res.error){document.getElementById('newUser').value='';document.getElementById('newPass').value='';loadUsers();}
+}
+async function changePass(id,name){
+    const pw=prompt('Nouveau mot de passe pour '+name+' :');
+    if(!pw)return;
+    await fetch('/api/users/'+id+'/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    alert('Mot de passe modifié !');
+}
+async function deleteUser(id,name){
+    if(!confirm('Supprimer '+name+' ?'))return;
+    const res=await(await fetch('/api/users/'+id+'/delete',{method:'POST'})).json();
+    if(res.error)alert(res.error);else loadUsers();
+}
+loadUsers();
+</script>
+{% endblock %}

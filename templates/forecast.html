@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Prévisions — Skool Tracker{% endblock %}
+{% block content %}
+<div class="filters">
+    <div class="filter-group"><label>Horizon :</label>
+        <select id="horizon"><option value="3">3 mois</option><option value="6" selected>6 mois</option><option value="12">12 mois</option></select>
+    </div>
+</div>
+<div class="kpi-grid" id="forecastKpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Prévision inscriptions</h3><canvas id="signupForecast"></canvas></div>
+    <div class="chart-card"><h3>Prévision revenus</h3><canvas id="revForecast"></canvas></div>
+</div>
+<div class="chart-card"><h3>Membres cumulés (réel + projection)</h3><canvas id="cumulForecast"></canvas></div>
+{% endblock %}
+{% block scripts %}
+<script>
+let charts=[];
+async function load(){
+    charts.forEach(c=>c.destroy());charts=[];
+    const months=document.getElementById('horizon').value;
+    const d=await(await fetch('/api/forecast?months='+months)).json();
+    if(d.error){document.getElementById('forecastKpis').innerHTML=`<div class="card"><p>${d.error}</p></div>`;return;}
+
+    const lastF=d.forecast[d.forecast.length-1];
+    const totalHist=d.historical.reduce((a,r)=>a+r.signups,0);
+    document.getElementById('forecastKpis').innerHTML=`
+        <div class="kpi-card"><div class="kpi-value">+${d.trend.signup_slope}/mois</div><div class="kpi-label">Tendance inscriptions</div></div>
+        <div class="kpi-card"><div class="kpi-value">${lastF.cumulative}</div><div class="kpi-label">Membres prévus (${lastF.month})</div></div>
+        <div class="kpi-card"><div class="kpi-value">+\$${d.trend.revenue_slope}/mois</div><div class="kpi-label">Tendance revenus</div></div>
+        <div class="kpi-card"><div class="kpi-value">\$${lastF.revenue}</div><div class="kpi-label">Revenus prévus (${lastF.month})</div></div>
+    `;
+
+    const hLabels=d.historical.map(r=>r.month), fLabels=d.forecast.map(r=>r.month);
+    const allLabels=[...hLabels,...fLabels];
+    const hSignups=d.historical.map(r=>r.signups), fSignups=d.forecast.map(r=>r.signups);
+    const hRev=d.historical.map(r=>r.revenue), fRev=d.forecast.map(r=>r.revenue);
+    const opts={responsive:true,scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}},plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}};
+
+    charts.push(new Chart('signupForecast',{type:'bar',data:{labels:allLabels,datasets:[
+        {label:'Réel',data:[...hSignups,...fLabels.map(()=>null)],backgroundColor:'#6c5ce7'},
+        {label:'Prévu',data:[...hLabels.map(()=>null),...fSignups],backgroundColor:'rgba(108,92,231,0.4)',borderColor:'#6c5ce7',borderWidth:1,borderDash:[5,5]}
+    ]},options:opts}));
+
+    charts.push(new Chart('revForecast',{type:'bar',data:{labels:allLabels,datasets:[
+        {label:'Réel',data:[...hRev,...fLabels.map(()=>null)],backgroundColor:'#00b894'},
+        {label:'Prévu',data:[...hLabels.map(()=>null),...fRev],backgroundColor:'rgba(0,184,148,0.4)',borderColor:'#00b894',borderWidth:1,borderDash:[5,5]}
+    ]},options:opts}));
+
+    // Cumulative
+    let cum=0;const cumData=[];
+    d.historical.forEach(r=>{cum+=r.signups;cumData.push(cum);});
+    const cumForecast=d.forecast.map(r=>r.cumulative);
+    charts.push(new Chart('cumulForecast',{type:'line',data:{labels:allLabels,datasets:[
+        {label:'Réel',data:[...cumData,...fLabels.map(()=>null)],borderColor:'#00b894',backgroundColor:'rgba(0,184,148,0.1)',fill:true,tension:0.3},
+        {label:'Projection',data:[...hLabels.map((_,i)=>i===hLabels.length-1?cumData[cumData.length-1]:null),...cumForecast],borderColor:'#fdcb6e',borderDash:[5,5],backgroundColor:'rgba(253,203,110,0.1)',fill:true,tension:0.3}
+    ]},options:opts}));
+}
+document.getElementById('horizon').addEventListener('change',load);
+load();
+</script>
+{% endblock %}

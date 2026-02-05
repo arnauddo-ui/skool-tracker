@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Croissance — Skool Tracker{% endblock %}
+{% block content %}
+<div class="filters">
+    <div class="filter-group"><label>Grouper par :</label>
+        <select id="groupBy"><option value="day">Jour</option><option value="week">Semaine</option><option value="month" selected>Mois</option></select>
+    </div>
+</div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Nouvelles inscriptions</h3><canvas id="signupsChart"></canvas></div>
+    <div class="chart-card"><h3>Croissance cumulée</h3><canvas id="cumulChart"></canvas></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let c1,c2;
+async function load(){
+    const g=document.getElementById('groupBy').value;
+    const d=await(await fetch('/api/growth?group='+g)).json();
+    if(c1)c1.destroy();if(c2)c2.destroy();
+    const labels=d.signups.map(r=>r.period), vals=d.signups.map(r=>r.count), cum=d.cumulative.map(r=>r.total);
+    c1=new Chart('signupsChart',{type:'bar',data:{labels,datasets:[{label:'Inscriptions',data:vals,backgroundColor:'#6c5ce7'}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}});
+    c2=new Chart('cumulChart',{type:'line',data:{labels,datasets:[{label:'Total membres',data:cum,borderColor:'#00b894',backgroundColor:'rgba(0,184,148,0.1)',fill:true,tension:0.3}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}});
+}
+document.getElementById('groupBy').addEventListener('change',load);
+load();
+</script>
+{% endblock %}

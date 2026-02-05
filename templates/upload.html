@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Upload CSV — Skool Tracker{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>📥 Importer les données Skool</h2>
+    <p class="text-muted">Uploadez votre export CSV de Skool (menu Members → Export). Les données existantes seront mises à jour, les nouveaux membres ajoutés.</p>
+    <form method="POST" enctype="multipart/form-data" class="import-form">
+        <div class="form-group">
+            <label for="csvfile">Fichier CSV</label>
+            <input type="file" id="csvfile" name="csvfile" accept=".csv" required>
+            <small>Format attendu : export Skool avec colonnes FirstName, LastName, Email, JoinedDate, etc.</small>
+        </div>
+        <button type="submit" class="btn btn-primary">Importer</button>
+    </form>
+</div>
+
+{% if stats and not stats.error %}
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-value">{{ stats.imported }}</div><div class="kpi-label">Traités</div></div>
+    <div class="kpi-card kpi-success"><div class="kpi-value">{{ stats.new }}</div><div class="kpi-label">Nouveaux</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.updated }}</div><div class="kpi-label">Mis à jour</div></div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h3>💡 Comment exporter depuis Skool</h3>
+    <p class="text-muted">
+        1. Allez dans votre groupe Skool<br>
+        2. Cliquez sur <strong>Members</strong><br>
+        3. Cliquez sur <strong>Export</strong> (icône en haut à droite)<br>
+        4. Téléchargez le fichier CSV<br>
+        5. Uploadez-le ici
+    </p>
+</div>
+{% endblock %}
