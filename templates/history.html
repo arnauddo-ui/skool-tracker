@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Historique d'imports — Skool Tracker{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>📜 Historique des imports CSV</h2>
+    <p class="text-muted">Chaque import crée un snapshot. Comparez l'évolution de votre communauté entre chaque upload.</p>
+    <div id="historyContent"></div>
+    <div id="noHistory" style="display:none;text-align:center;padding:2rem;color:var(--text-muted)">
+        Aucun historique. Uploadez votre premier CSV pour commencer le suivi.
+    </div>
+</div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Évolution des membres actifs</h3><canvas id="membersChart"></canvas></div>
+    <div class="chart-card"><h3>Évolution du MRR</h3><canvas id="mrrChart"></canvas></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load() {
+    const data = await (await fetch('/api/history')).json();
+
+    if (data.length === 0) {
+        document.getElementById('noHistory').style.display = 'block';
+        return;
+    }
+
+    const fmt = v => v > 0 ? `<span style="color:var(--success)">+${v}</span>` : v < 0 ? `<span style="color:var(--danger)">${v}</span>` : `<span style="color:var(--text-muted)">—</span>`;
+
+    document.getElementById('historyContent').innerHTML = `
+        <div class="table-wrapper" style="margin-top:1rem">
+        <table>
+            <thead><tr>
+                <th>Date d'import</th>
+                <th>Actifs</th><th>Δ</th>
+                <th>Nouveaux</th><th>Churned</th><th>Réactivés</th>
+                <th>Payants</th><th>Δ</th>
+                <th>MRR</th><th>Δ</th>
+                <th>LTV total</th>
+            </tr></thead>
+            <tbody>
+            ${data.map(h => `<tr>
+                <td><strong>${h.uploaded_at.slice(0, 16)}</strong></td>
+                <td>${h.active_members}</td>
+                <td>${fmt(h.delta_members)}</td>
+                <td style="color:var(--success)">${h.new_members > 0 ? '+' + h.new_members : '—'}</td>
+                <td style="color:${h.churned_members > 0 ? 'var(--danger)' : 'var(--text-muted)'}">${h.churned_members > 0 ? '-' + h.churned_members : '—'}</td>
+                <td style="color:${h.reactivated_members > 0 ? 'var(--accent)' : 'var(--text-muted)'}">${h.reactivated_members > 0 ? '+' + h.reactivated_members : '—'}</td>
+                <td>${h.paid_members}</td>
+                <td>${fmt(h.delta_paid)}</td>
+                <td>$${h.mrr}</td>
+                <td>${fmt(h.delta_mrr)}</td>
+                <td>$${h.total_ltv}</td>
+            </tr>`).join('')}
+            </tbody>
+        </table>
+        </div>
+    `;
+
+    // Charts (reverse for chronological order)
+    const rev = [...data].reverse();
+    const labels = rev.map(h => h.uploaded_at.slice(0, 10));
+
+    new Chart('membersChart', {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {label: 'Actifs', data: rev.map(h => h.active_members), borderColor: '#00b894', backgroundColor: 'rgba(0,184,148,0.1)', fill: true, tension: 0.3},
+                {label: 'Payants', data: rev.map(h => h.paid_members), borderColor: '#6c5ce7', backgroundColor: 'rgba(108,92,231,0.1)', fill: true, tension: 0.3}
+            ]
+        },
+        options: {responsive: true, plugins: {legend: {labels: {color: '#8b8fa3'}}},
+            scales: {x: {grid: {color: 'rgba(45,49,72,0.5)'}, ticks: {color: '#5f637a'}},
+                     y: {beginAtZero: true, grid: {color: 'rgba(45,49,72,0.5)'}, ticks: {color: '#5f637a'}}}}
+    });
+
+    new Chart('mrrChart', {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{label: 'MRR ($)', data: rev.map(h => h.mrr), borderColor: '#fdcb6e', backgroundColor: 'rgba(253,203,110,0.1)', fill: true, tension: 0.3}]
+        },
+        options: {responsive: true, plugins: {legend: {labels: {color: '#8b8fa3'}}},
+            scales: {x: {grid: {color: 'rgba(45,49,72,0.5)'}, ticks: {color: '#5f637a'}},
+                     y: {beginAtZero: false, grid: {color: 'rgba(45,49,72,0.5)'}, ticks: {color: '#5f637a', callback: v => '$'+v}}}}
+    });
+}
+load();
+</script>
+{% endblock %}
