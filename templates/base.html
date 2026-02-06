@@ -21,6 +21,7 @@
             <a href="/channels" class="{% if request.path == '/channels' %}active{% endif %}">Canaux</a>
             <a href="/members" class="{% if request.path == '/members' %}active{% endif %}">Membres</a>
             <a href="/upload" class="{% if request.path == '/upload' %}active{% endif %}">📥 Upload</a>
+            <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">📜 Historique</a>
             <a href="/links" class="{% if request.path == '/links' %}active{% endif %}">🔗 Liens</a>
             {% if session.get('role') == 'admin' %}
             <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">⚙️</a>
