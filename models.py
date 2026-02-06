@@ -36,6 +36,10 @@ def init_db(app):
                 recurring_interval TEXT DEFAULT '',
                 tier TEXT DEFAULT '',
                 ltv REAL DEFAULT 0,
+                status TEXT DEFAULT 'active',
+                churned_at TEXT DEFAULT '',
+                first_seen_at TEXT DEFAULT '',
+                last_seen_at TEXT DEFAULT '',
                 upload_batch TEXT DEFAULT ''
             );
 
