@@ -98,6 +98,8 @@ tr:hover td { background:rgba(108,92,231,0.04); }
 .btn-primary:hover { background:var(--accent-hover); }
 .btn-copy { background:var(--bg-card); color:var(--text-secondary); border:1px solid var(--border); padding:0.35rem 0.65rem; font-size:0.8rem; }
 .btn-copy:hover { border-color:var(--accent); color:var(--accent); }
+.btn-danger-sm { background:rgba(225,112,85,0.1); color:#e17055; border:1px solid rgba(225,112,85,0.3); padding:0.35rem 0.65rem; font-size:0.8rem; cursor:pointer; border-radius:8px; }
+.btn-danger-sm:hover { background:rgba(225,112,85,0.25); border-color:#e17055; }
 .btn-full { width:100%; }
 
 /* FORMS */
