@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Churn — Skool Tracker{% endblock %}
+{% block content %}
+<div class="kpi-grid" id="churnKpis"></div>
+<div class="charts-grid">
+    <div class="chart-card"><h3>Rétention vs Churn</h3><canvas id="pieChart"></canvas></div>
+    <div class="chart-card"><h3>Départs par mois</h3><canvas id="monthlyChart"></canvas></div>
+</div>
+<div class="card">
+    <h3>👋 Membres partis</h3>
+    <p class="text-muted" style="margin-bottom:1rem">Ces membres étaient dans un upload précédent mais ont disparu du dernier CSV importé.</p>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th><th>Parti le</th><th>LTV</th><th>Parrain</th></tr></thead>
+            <tbody id="churnedBody"></tbody>
+        </table>
+    </div>
+    <div id="noChurn" style="display:none;text-align:center;padding:2rem;color:var(--text-muted)">
+        🎉 Aucun churn détecté pour le moment. Uploadez votre CSV régulièrement pour suivre les départs.
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function load() {
+    const d = await (await fetch('/api/churn')).json();
+    document.getElementById('churnKpis').innerHTML = `
+        <div class="kpi-card"><div class="kpi-value">${d.total_ever}</div><div class="kpi-label">Membres total (all-time)</div></div>
+        <div class="kpi-card kpi-success"><div class="kpi-value">${d.active}</div><div class="kpi-label">Actifs</div></div>
+        <div class="kpi-card kpi-danger"><div class="kpi-value">${d.churned}</div><div class="kpi-label">Churned</div></div>
+        <div class="kpi-card kpi-success"><div class="kpi-value">${d.retention_pct}%</div><div class="kpi-label">Rétention</div></div>
+        <div class="kpi-card kpi-danger"><div class="kpi-value">${d.churn_pct}%</div><div class="kpi-label">Taux de churn</div></div>
+        <div class="kpi-card"><div class="kpi-value">${d.avg_lifetime_days}j</div><div class="kpi-label">Durée de vie moyenne</div></div>
+        <div class="kpi-card kpi-warning"><div class="kpi-value">$${d.lost_ltv}</div><div class="kpi-label">LTV perdu</div></div>
+    `;
+    if (d.churned === 0) { document.getElementById('noChurn').style.display = 'block'; }
+    new Chart('pieChart', {type:'doughnut', data:{labels:['Actifs','Churned'], datasets:[{data:[d.active,d.churned],backgroundColor:['#00b894','#e17055'],borderWidth:0}]}, options:{responsive:true,cutout:'65%',plugins:{legend:{position:'bottom',labels:{color:'#8b8fa3'}}}}});
+    if (d.monthly_churn && d.monthly_churn.length > 0) {
+        new Chart('monthlyChart', {type:'bar', data:{labels:d.monthly_churn.map(r=>r.month), datasets:[{label:'Départs',data:d.monthly_churn.map(r=>r.count),backgroundColor:'#e17055'}]}, options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a'}},y:{beginAtZero:true,grid:{color:'rgba(45,49,72,0.5)'},ticks:{color:'#5f637a',precision:0}}}}});
+    }
+    document.getElementById('churnedBody').innerHTML = d.churned_list.map(m => `<tr>
+        <td><strong>${m.name}</strong></td>
+        <td style="color:var(--text-secondary);font-size:0.85rem">${m.email}</td>
+        <td>${m.joined_at ? m.joined_at.slice(0,10) : '—'}</td>
+        <td style="color:var(--danger)">${m.churned_at ? m.churned_at.slice(0,10) : '—'}</td>
+        <td>$${m.ltv}</td>
+        <td>${m.invited_by || '<span style="color:var(--text-muted)">—</span>'}</td>
+    </tr>`).join('');
+}
+load();
+</script>
+{% endblock %}
