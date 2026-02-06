@@ -482,6 +482,8 @@ def upload_csv():
         if stats.get("error"):
             flash(stats["error"], "error")
         else:
+            # Save upload history snapshot
+            save_upload_snapshot(stats)
             msg = f"{stats['imported']} membres importés ({stats['new']} nouveaux, {stats['updated']} mis à jour)"
             if stats.get('churned', 0) > 0:
                 msg += f", {stats['churned']} churned détectés"
@@ -582,19 +584,76 @@ def process_skool_csv(content):
     }
 
 
-# ==================== LINK TRACKER ====================
-
-def get_all_channels():
+def save_upload_snapshot(stats):
+    """Save a snapshot of current state after import."""
     db = get_db()
-    db_channels = db.execute("SELECT DISTINCT channel FROM clicks ORDER BY channel").fetchall()
-    custom = db.execute("SELECT name FROM custom_channels ORDER BY name").fetchall()
-    all_ch = set(DEFAULT_CHANNELS)
-    for r in db_channels:
-        all_ch.add(r["channel"])
-    for r in custom:
-        all_ch.add(r["name"])
-    return sorted(all_ch)
+    now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
+    total = db.execute("SELECT COUNT(*) as c FROM members WHERE email NOT LIKE '__no_email_%'").fetchone()["c"]
+    active = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'active' AND email NOT LIKE '__no_email_%'").fetchone()["c"]
+    paid = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'active' AND price > 0 AND ltv > 0").fetchone()["c"]
+    free = active - paid
+
+    mrr = db.execute("SELECT SUM(price) as s FROM members WHERE price > 0 AND ltv > 0 AND recurring_interval = 'month' AND status = 'active'").fetchone()["s"] or 0
+    annual = db.execute("SELECT SUM(price) as s FROM members WHERE price > 0 AND ltv > 0 AND recurring_interval = 'year' AND status = 'active'").fetchone()["s"] or 0
+    mrr += annual / 12
+
+    total_ltv = db.execute("SELECT SUM(ltv) as s FROM members").fetchone()["s"] or 0
+    avg_ltv = db.execute("SELECT AVG(ltv) as a FROM members WHERE ltv > 0").fetchone()["a"] or 0
+
+    db.execute("""
+        INSERT INTO upload_history (batch, uploaded_at, total_members, active_members,
+            new_members, updated_members, churned_members, reactivated_members,
+            paid_members, free_members, mrr, total_ltv, avg_ltv)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (stats["batch"], now, total, active, stats["new"], stats["updated"],
+          stats.get("churned", 0), stats.get("reactivated", 0),
+          paid, free, round(mrr, 2), round(total_ltv, 2), round(avg_ltv, 2)))
+    db.commit()
+
+
+# ==================== UPLOAD HISTORY ====================
+
+@app.route("/history")
+@login_required
+def history_page():
+    return render_template("history.html")
+
+
+@app.route("/api/history")
+@login_required
+def api_history():
+    db = get_db()
+    rows = db.execute("SELECT * FROM upload_history ORDER BY uploaded_at DESC").fetchall()
+
+    history = []
+    for i, r in enumerate(rows):
+        entry = {
+            "id": r["id"], "batch": r["batch"], "uploaded_at": r["uploaded_at"],
+            "total_members": r["total_members"], "active_members": r["active_members"],
+            "new_members": r["new_members"], "updated_members": r["updated_members"],
+            "churned_members": r["churned_members"], "reactivated_members": r["reactivated_members"],
+            "paid_members": r["paid_members"], "free_members": r["free_members"],
+            "mrr": r["mrr"], "total_ltv": r["total_ltv"], "avg_ltv": r["avg_ltv"]
+        }
+        # Compute deltas vs previous import
+        if i < len(rows) - 1:
+            prev = rows[i + 1]
+            entry["delta_members"] = r["active_members"] - prev["active_members"]
+            entry["delta_mrr"] = round(r["mrr"] - prev["mrr"], 2)
+            entry["delta_ltv"] = round(r["total_ltv"] - prev["total_ltv"], 2)
+            entry["delta_paid"] = r["paid_members"] - prev["paid_members"]
+        else:
+            entry["delta_members"] = 0
+            entry["delta_mrr"] = 0
+            entry["delta_ltv"] = 0
+            entry["delta_paid"] = 0
+        history.append(entry)
+
+    return jsonify(history)
+
+
+# ==================== LINK TRACKER ====================
 
 @app.route("/go/<channel>")
 def track_click(channel):
@@ -612,12 +671,98 @@ def track_click(channel):
     )
     db.commit()
 
-    dest = SKOOL_URL
-    utm_params = {k: v for k, v in request.args.items() if k.startswith("utm_")}
-    if utm_params:
-        sep = "&" if "?" in dest else "?"
-        dest += sep + "&".join(f"{k}={v}" for k, v in utm_params.items())
+    # Check for custom tracking link
+    link = db.execute("SELECT destination_url, utm_source, utm_campaign FROM tracking_links WHERE channel = ?", (channel,)).fetchone()
+
+    if link:
+        dest = link["destination_url"]
+        params = {}
+        if link["utm_source"]:
+            params["utm_source"] = link["utm_source"]
+        if link["utm_campaign"]:
+            params["utm_campaign"] = link["utm_campaign"]
+        # Also pick up any UTM params from the URL itself
+        for k, v in request.args.items():
+            if k.startswith("utm_"):
+                params[k] = v
+        if params:
+            sep = "&" if "?" in dest else "?"
+            dest += sep + "&".join(f"{k}={v}" for k, v in params.items())
+    else:
+        dest = SKOOL_URL
+        utm_params = {k: v for k, v in request.args.items() if k.startswith("utm_")}
+        if utm_params:
+            sep = "&" if "?" in dest else "?"
+            dest += sep + "&".join(f"{k}={v}" for k, v in utm_params.items())
+
     return redirect(dest, code=302)
+
+
+@app.route("/links", methods=["GET", "POST"])
+@login_required
+def links_page():
+    db = get_db()
+
+    if request.method == "POST":
+        channel = request.form.get("channel_name", "").strip().lower()
+        channel = "".join(c for c in channel if c.isalnum() or c in "-_")
+        dest_url = request.form.get("destination_url", "").strip()
+        utm_source = request.form.get("utm_source", "").strip()
+        utm_campaign = request.form.get("utm_campaign", "").strip()
+
+        if not channel:
+            flash("Nom de canal requis", "error")
+        elif not dest_url:
+            flash("URL de destination requise", "error")
+        else:
+            if not dest_url.startswith("http"):
+                dest_url = "https://" + dest_url
+            try:
+                db.execute(
+                    "INSERT INTO tracking_links (channel, destination_url, utm_source, utm_campaign, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (channel, dest_url, utm_source, utm_campaign, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
+                )
+                # Also add to custom_channels if not exists
+                try:
+                    db.execute("INSERT INTO custom_channels (name, created_at) VALUES (?, ?)",
+                        (channel, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")))
+                except Exception:
+                    pass
+                db.commit()
+                flash(f"Lien « {channel} » créé !", "success")
+            except Exception:
+                flash(f"Le canal « {channel} » existe déjà.", "error")
+
+    base_url = request.host_url.rstrip("/")
+    links = db.execute("SELECT * FROM tracking_links ORDER BY created_at DESC").fetchall()
+
+    # Get click counts per channel
+    click_counts = {}
+    for row in db.execute("SELECT channel, COUNT(*) as cnt FROM clicks GROUP BY channel").fetchall():
+        click_counts[row["channel"]] = row["cnt"]
+
+    links_data = [{
+        "id": l["id"], "channel": l["channel"], "destination_url": l["destination_url"],
+        "utm_source": l["utm_source"], "utm_campaign": l["utm_campaign"],
+        "url": f"{base_url}/go/{l['channel']}", "clicks": click_counts.get(l["channel"], 0),
+        "created_at": l["created_at"]
+    } for l in links]
+
+    return render_template("links.html", links=links_data)
+
+
+@app.route("/api/links/<int:link_id>/delete", methods=["POST"])
+@login_required
+def delete_link(link_id):
+    db = get_db()
+    link = db.execute("SELECT channel FROM tracking_links WHERE id = ?", (link_id,)).fetchone()
+    if link:
+        db.execute("DELETE FROM clicks WHERE channel = ?", (link["channel"],))
+        db.execute("DELETE FROM tracking_links WHERE id = ?", (link_id,))
+        db.execute("DELETE FROM custom_channels WHERE name = ?", (link["channel"],))
+        db.commit()
+        return jsonify({"ok": True})
+    return jsonify({"error": "Lien introuvable"}), 404
 
 
 @app.route("/channels")
@@ -656,30 +801,6 @@ def api_clicks():
         "by_channel": {r["channel"]: r["cnt"] for r in by_channel},
         "daily_by_channel": daily_map
     })
-
-
-@app.route("/links", methods=["GET", "POST"])
-@login_required
-def links_page():
-    if request.method == "POST":
-        new_channel = request.form.get("channel_name", "").strip().lower()
-        new_channel = "".join(c for c in new_channel if c.isalnum() or c in "-_")
-        if new_channel:
-            db = get_db()
-            try:
-                db.execute(
-                    "INSERT INTO custom_channels (name, created_at) VALUES (?, ?)",
-                    (new_channel, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
-                )
-                db.commit()
-                flash(f"Canal « {new_channel} » créé !", "success")
-            except Exception:
-                flash(f"Le canal « {new_channel} » existe déjà.", "error")
-
-    base_url = request.host_url.rstrip("/")
-    all_channels = get_all_channels()
-    links = [{"channel": ch, "url": f"{base_url}/go/{ch}"} for ch in all_channels]
-    return render_template("links.html", links=links, skool_url=SKOOL_URL)
 
 
 @app.route("/api/export")
