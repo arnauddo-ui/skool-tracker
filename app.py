@@ -34,16 +34,23 @@ init_db(app)
 # Create or update admin on every startup
 with app.app_context():
     db = get_db()
-    admin_pw = generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin"))
+    admin_pw_raw = os.environ.get("ADMIN_PASSWORD", "admin")
+    print(f"[STARTUP] ADMIN_PASSWORD from env: '{admin_pw_raw[:3]}***' (length: {len(admin_pw_raw)})")
+    admin_pw = generate_password_hash(admin_pw_raw)
     existing = db.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
     if existing:
         db.execute("UPDATE users SET password_hash = ? WHERE username = 'admin'", (admin_pw,))
+        print("[STARTUP] Admin password UPDATED")
     else:
         db.execute(
             "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
             ("admin", admin_pw, "admin", datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
         )
+        print("[STARTUP] Admin user CREATED")
     db.commit()
+    # Verify it works
+    verify = db.execute("SELECT password_hash FROM users WHERE username = 'admin'").fetchone()
+    print(f"[STARTUP] Verify login test: {check_password_hash(verify['password_hash'], admin_pw_raw)}")
 
 
 # ==================== AUTH ====================
@@ -81,6 +88,7 @@ def login():
             session["username"] = user["username"]
             session["role"] = user["role"]
             return redirect(url_for("dashboard"))
+        print(f"[LOGIN FAILED] username='{username}', user_found={user is not None}")
         flash("Identifiants incorrects", "error")
     return render_template("login.html")
 
@@ -666,6 +674,19 @@ def change_own_password():
 
 
 # ==================== MAIN ====================
+
+# Temporary route to reset admin password (remove after first login!)
+@app.route("/reset-admin")
+def reset_admin():
+    db = get_db()
+    new_pw = generate_password_hash("admin123")
+    db.execute("DELETE FROM users")
+    db.execute(
+        "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+        ("admin", new_pw, "admin", datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    db.commit()
+    return "Admin reset! Login: admin / admin123  <a href='/login'>→ Login</a>"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
