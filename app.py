@@ -31,16 +31,19 @@ DEFAULT_CHANNELS = [
 
 init_db(app)
 
-# Create default admin if no users exist
+# Create or update admin on every startup
 with app.app_context():
     db = get_db()
-    if not db.execute("SELECT id FROM users LIMIT 1").fetchone():
+    admin_pw = generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin"))
+    existing = db.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+    if existing:
+        db.execute("UPDATE users SET password_hash = ? WHERE username = 'admin'", (admin_pw,))
+    else:
         db.execute(
             "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            ("admin", generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin")),
-             "admin", datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
+            ("admin", admin_pw, "admin", datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
         )
-        db.commit()
+    db.commit()
 
 
 # ==================== AUTH ====================
