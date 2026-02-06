@@ -116,7 +116,9 @@ def api_overview():
     this_month = now.strftime("%Y-%m")
     last_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
 
-    total = db.execute("SELECT COUNT(*) as c FROM members").fetchone()["c"]
+    total = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'active'").fetchone()["c"]
+    total_ever = db.execute("SELECT COUNT(*) as c FROM members WHERE email NOT LIKE '__no_email_%'").fetchone()["c"]
+    churned = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'churned'").fetchone()["c"]
     this_month_new = db.execute(
         "SELECT COUNT(*) as c FROM members WHERE joined_at LIKE ?", (this_month + "%",)
     ).fetchone()["c"]
@@ -124,9 +126,9 @@ def api_overview():
         "SELECT COUNT(*) as c FROM members WHERE joined_at LIKE ?", (last_month + "%",)
     ).fetchone()["c"]
 
-    # MRR
-    mrr = db.execute("SELECT SUM(price) as s FROM members WHERE price > 0 AND recurring_interval = 'month'").fetchone()["s"] or 0
-    annual_monthly = db.execute("SELECT SUM(price) as s FROM members WHERE price > 0 AND recurring_interval = 'year'").fetchone()["s"] or 0
+    # MRR — only count active members who have actually paid (LTV > 0)
+    mrr = db.execute("SELECT SUM(price) as s FROM members WHERE status = 'active' AND price > 0 AND ltv > 0 AND recurring_interval = 'month'").fetchone()["s"] or 0
+    annual_monthly = db.execute("SELECT SUM(price) as s FROM members WHERE status = 'active' AND price > 0 AND ltv > 0 AND recurring_interval = 'year'").fetchone()["s"] or 0
     mrr += annual_monthly / 12
 
     avg_ltv = db.execute("SELECT AVG(ltv) as a FROM members WHERE ltv > 0").fetchone()["a"] or 0
@@ -148,6 +150,8 @@ def api_overview():
 
     return jsonify({
         "total_members": total,
+        "total_ever": total_ever,
+        "churned": churned,
         "this_month_new": this_month_new,
         "last_month_new": last_month_new,
         "growth_pct": growth,
@@ -294,6 +298,66 @@ def api_referrals():
     })
 
 
+# ==================== CHURN ====================
+
+@app.route("/churn")
+@login_required
+def churn_page():
+    return render_template("churn.html")
+
+
+@app.route("/api/churn")
+@login_required
+def api_churn():
+    db = get_db()
+
+    active = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'active' AND email NOT LIKE '__no_email_%'").fetchone()["c"]
+    churned = db.execute("SELECT COUNT(*) as c FROM members WHERE status = 'churned'").fetchone()["c"]
+    total_ever = active + churned
+    churn_pct = round(churned / total_ever * 100, 1) if total_ever > 0 else 0
+    retention_pct = round(100 - churn_pct, 1)
+
+    # Lost revenue (sum of last known price of churned members)
+    lost_mrr = db.execute("SELECT SUM(ltv) as s FROM members WHERE status = 'churned'").fetchone()["s"] or 0
+
+    # Churned members list
+    churned_list = db.execute("""
+        SELECT first_name, last_name, email, joined_at, churned_at, ltv, invited_by
+        FROM members WHERE status = 'churned'
+        ORDER BY churned_at DESC LIMIT 100
+    """).fetchall()
+
+    # Churn by month (when they churned)
+    monthly_churn = db.execute("""
+        SELECT SUBSTR(churned_at, 1, 7) as month, COUNT(*) as cnt
+        FROM members WHERE status = 'churned' AND churned_at != ''
+        GROUP BY month ORDER BY month
+    """).fetchall()
+
+    # Average lifetime (days between join and churn)
+    avg_lifetime = db.execute("""
+        SELECT AVG(JULIANDAY(churned_at) - JULIANDAY(joined_at)) as avg_days
+        FROM members WHERE status = 'churned' AND churned_at != '' AND joined_at != ''
+    """).fetchone()["avg_days"] or 0
+
+    return jsonify({
+        "active": active,
+        "churned": churned,
+        "total_ever": total_ever,
+        "churn_pct": churn_pct,
+        "retention_pct": retention_pct,
+        "lost_ltv": round(lost_mrr, 2),
+        "avg_lifetime_days": round(avg_lifetime, 0),
+        "monthly_churn": [{"month": r["month"], "count": r["cnt"]} for r in monthly_churn],
+        "churned_list": [{
+            "name": f"{r['first_name']} {r['last_name']}",
+            "email": r["email"], "joined_at": r["joined_at"],
+            "churned_at": r["churned_at"], "ltv": r["ltv"],
+            "invited_by": r["invited_by"]
+        } for r in churned_list]
+    })
+
+
 # ==================== FORECAST ====================
 
 @app.route("/forecast")
@@ -391,7 +455,9 @@ def api_members():
         "id": r["id"], "first_name": r["first_name"], "last_name": r["last_name"],
         "email": r["email"], "invited_by": r["invited_by"],
         "joined_at": r["joined_at"], "price": r["price"],
-        "tier": r["tier"], "ltv": r["ltv"]
+        "tier": r["tier"], "ltv": r["ltv"],
+        "status": r["status"] if "status" in r.keys() else "active",
+        "churned_at": r["churned_at"] if "churned_at" in r.keys() else ""
     } for r in rows])
 
 
@@ -416,13 +482,18 @@ def upload_csv():
         if stats.get("error"):
             flash(stats["error"], "error")
         else:
-            flash(f"{stats['imported']} membres importés ({stats['new']} nouveaux, {stats['updated']} mis à jour)", "success")
+            msg = f"{stats['imported']} membres importés ({stats['new']} nouveaux, {stats['updated']} mis à jour)"
+            if stats.get('churned', 0) > 0:
+                msg += f", {stats['churned']} churned détectés"
+            if stats.get('reactivated', 0) > 0:
+                msg += f", {stats['reactivated']} réactivés"
+            flash(msg, "success")
 
     return render_template("upload.html", stats=stats)
 
 
 def process_skool_csv(content):
-    """Parse and import Skool CSV."""
+    """Parse and import Skool CSV with churn detection."""
     delimiter = ";" if ";" in content.split("\n")[0] else ","
     reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
     rows = list(reader)
@@ -431,15 +502,29 @@ def process_skool_csv(content):
         return {"error": "Fichier vide"}
 
     db = get_db()
+    now = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
     batch = datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
     imported = 0
     new_count = 0
     updated = 0
+    reactivated = 0
 
+    # Remove old placeholder entries (members without email from previous uploads)
+    db.execute("DELETE FROM members WHERE email LIKE '__no_email_%'")
+
+    # Collect all real emails in this upload
+    csv_emails = set()
+
+    no_email_idx = 0
     for row in rows:
         email = row.get("Email", "").strip()
+        is_placeholder = False
         if not email:
-            continue
+            no_email_idx += 1
+            email = f"__no_email_{no_email_idx}_{batch}__"
+            is_placeholder = True
+        else:
+            csv_emails.add(email)
 
         first_name = row.get("FirstName", "").strip()
         last_name = row.get("LastName", "").strip()
@@ -452,27 +537,49 @@ def process_skool_csv(content):
         ltv_str = row.get("LTV", "0").replace("$", "").replace(",", "").strip()
         ltv = float(ltv_str) if ltv_str else 0
 
-        existing = db.execute("SELECT id FROM members WHERE email = ?", (email,)).fetchone()
+        existing = db.execute("SELECT id, status FROM members WHERE email = ?", (email,)).fetchone()
 
         if existing:
+            was_churned = existing["status"] == "churned"
             db.execute("""
                 UPDATE members SET first_name=?, last_name=?, invited_by=?,
-                price=?, recurring_interval=?, tier=?, ltv=?, upload_batch=?
+                price=?, recurring_interval=?, tier=?, ltv=?, upload_batch=?,
+                status='active', churned_at='', last_seen_at=?
                 WHERE email=?
-            """, (first_name, last_name, invited_by, price, interval, tier, ltv, batch, email))
+            """, (first_name, last_name, invited_by, price, interval, tier, ltv, batch, now, email))
             updated += 1
+            if was_churned:
+                reactivated += 1
         else:
             db.execute("""
                 INSERT INTO members (first_name, last_name, email, invited_by, joined_at,
-                    price, recurring_interval, tier, ltv, upload_batch)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (first_name, last_name, email, invited_by, joined_at, price, interval, tier, ltv, batch))
+                    price, recurring_interval, tier, ltv, status, first_seen_at, last_seen_at, upload_batch)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            """, (first_name, last_name, email, invited_by, joined_at, price, interval, tier, ltv, now, now, batch))
             new_count += 1
 
         imported += 1
 
+    # CHURN DETECTION: members with real emails who are in DB as active
+    # but NOT in this CSV upload = churned
+    churned = 0
+    if csv_emails:  # only detect churn if we have real emails
+        active_in_db = db.execute(
+            "SELECT email FROM members WHERE status = 'active' AND email NOT LIKE '__no_email_%'"
+        ).fetchall()
+        for row in active_in_db:
+            if row["email"] not in csv_emails:
+                db.execute(
+                    "UPDATE members SET status='churned', churned_at=?, price=0 WHERE email=?",
+                    (now, row["email"])
+                )
+                churned += 1
+
     db.commit()
-    return {"imported": imported, "new": new_count, "updated": updated, "batch": batch}
+    return {
+        "imported": imported, "new": new_count, "updated": updated,
+        "churned": churned, "reactivated": reactivated, "batch": batch
+    }
 
 
 # ==================== LINK TRACKER ====================
