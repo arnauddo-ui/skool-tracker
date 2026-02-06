@@ -70,6 +70,32 @@ def init_db(app):
             CREATE INDEX IF NOT EXISTS idx_members_email ON members(email);
             CREATE INDEX IF NOT EXISTS idx_clicks_channel ON clicks(channel);
             CREATE INDEX IF NOT EXISTS idx_clicks_date ON clicks(clicked_at);
+
+            CREATE TABLE IF NOT EXISTS tracking_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel TEXT NOT NULL UNIQUE,
+                destination_url TEXT NOT NULL,
+                utm_source TEXT DEFAULT '',
+                utm_campaign TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS upload_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                total_members INTEGER DEFAULT 0,
+                active_members INTEGER DEFAULT 0,
+                new_members INTEGER DEFAULT 0,
+                updated_members INTEGER DEFAULT 0,
+                churned_members INTEGER DEFAULT 0,
+                reactivated_members INTEGER DEFAULT 0,
+                paid_members INTEGER DEFAULT 0,
+                free_members INTEGER DEFAULT 0,
+                mrr REAL DEFAULT 0,
+                total_ltv REAL DEFAULT 0,
+                avg_ltv REAL DEFAULT 0
+            );
         """)
         db.commit()
         close_db()
