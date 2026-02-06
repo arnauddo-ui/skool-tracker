@@ -2,33 +2,82 @@
 {% block title %}Liens de tracking — Skool Tracker{% endblock %}
 {% block content %}
 <div class="card">
-    <h2>➕ Créer un nouveau canal</h2>
-    <form method="POST" style="display:flex;gap:0.75rem;align-items:center;margin-top:1rem">
-        <input type="text" name="channel_name" placeholder="Nom du canal (ex: podcast, webinar...)" required style="flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
-        <button type="submit" class="btn btn-primary">Créer</button>
+    <h2>➕ Créer un lien de tracking</h2>
+    <form method="POST" style="display:flex;flex-direction:column;gap:0.75rem;margin-top:1rem">
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem">
+            <div>
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">Nom du canal *</label>
+                <input type="text" name="channel_name" placeholder="ex: youtube, podcast, webinar..." required style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+            </div>
+            <div>
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">URL de destination *</label>
+                <input type="url" name="destination_url" placeholder="https://www.skool.com/..." required style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+            <div>
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">UTM Source</label>
+                <input type="text" name="utm_source" placeholder="ex: youtube, linkedin, newsletter..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+            </div>
+            <div>
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">UTM Campaign</label>
+                <input type="text" name="utm_campaign" placeholder="ex: lancement-janvier, promo-50..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="align-self:flex-start">Créer le lien</button>
     </form>
-    <small class="text-muted" style="display:block;margin-top:0.5rem">Lettres, chiffres et tirets uniquement.</small>
 </div>
+
 <div class="card">
     <h2>🔗 Vos liens de tracking ({{ links|length }})</h2>
-    <p class="text-muted">Destination : <strong>{{ skool_url }}</strong></p>
-    <div class="links-grid">
-        {% for link in links %}
-        <div class="link-card">
-            <span class="channel-badge channel-{{ link.channel }}">{{ link.channel }}</span>
-            <code style="flex:1;color:var(--accent);font-size:0.85rem;word-break:break-all" id="url-{{ link.channel }}">{{ link.url }}</code>
-            <button class="btn btn-copy" onclick="copyLink('{{ link.channel }}')">📋</button>
-        </div>
-        {% endfor %}
+    {% if links %}
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Canal</th><th>URL de tracking</th><th>Destination</th><th>UTM Source</th><th>UTM Campaign</th><th>Clics</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for link in links %}
+            <tr id="link-row-{{ link.id }}">
+                <td><span class="channel-badge channel-{{ link.channel }}">{{ link.channel }}</span></td>
+                <td><code style="color:var(--accent);font-size:0.85rem;word-break:break-all" id="url-{{ link.channel }}">{{ link.url }}</code></td>
+                <td style="font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ link.destination_url }}">{{ link.destination_url }}</td>
+                <td style="color:var(--text-muted)">{{ link.utm_source or '—' }}</td>
+                <td style="color:var(--text-muted)">{{ link.utm_campaign or '—' }}</td>
+                <td><strong>{{ link.clicks }}</strong></td>
+                <td style="display:flex;gap:0.5rem">
+                    <button class="btn btn-copy" onclick="copyLink('{{ link.channel }}')" title="Copier">📋</button>
+                    <button class="btn btn-danger-sm" onclick="deleteLink({{ link.id }}, '{{ link.channel }}')" title="Supprimer">🗑️</button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
     </div>
+    {% else %}
+    <p style="text-align:center;color:var(--text-muted);padding:2rem">Aucun lien créé. Utilisez le formulaire ci-dessus pour créer votre premier lien de tracking.</p>
+    {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-function copyLink(ch){
-    navigator.clipboard.writeText(document.getElementById('url-'+ch).textContent).then(()=>{
-        event.target.textContent='✅';setTimeout(()=>event.target.textContent='📋',2000);
+function copyLink(ch) {
+    navigator.clipboard.writeText(document.getElementById('url-'+ch).textContent).then(() => {
+        event.target.textContent = '✅';
+        setTimeout(() => event.target.textContent = '📋', 2000);
     });
+}
+
+function deleteLink(id, channel) {
+    if (!confirm(`⚠️ Supprimer le lien "${channel}" ?\n\nAttention : la suppression est DÉFINITIVE.\nToutes les données de clics associées seront aussi supprimées.`)) return;
+
+    fetch(`/api/links/${id}/delete`, {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            if (d.ok) {
+                document.getElementById('link-row-' + id).remove();
+            } else {
+                alert('Erreur: ' + (d.error || 'inconnue'));
+            }
+        });
 }
 </script>
 {% endblock %}
