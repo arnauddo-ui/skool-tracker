@@ -4,27 +4,49 @@
 <div class="card">
     <h2>➕ Créer un lien de tracking</h2>
     <form method="POST" style="display:flex;flex-direction:column;gap:0.75rem;margin-top:1rem">
-        <div style="display:grid;grid-template-columns:1fr 2fr;gap:0.75rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:0.75rem">
             <div>
-                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">Nom du canal *</label>
-                <input type="text" name="channel_name" placeholder="ex: youtube, podcast, webinar..." required style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">Plateforme</label>
+                <select name="platform" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+                    <option value="">— Choisir —</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="x">X (Twitter)</option>
+                    <option value="newsletter">Newsletter</option>
+                    <option value="google-ads">Google Ads</option>
+                    <option value="reddit">Reddit</option>
+                    <option value="substack">Substack</option>
+                    <option value="linktree">Linktree</option>
+                    <option value="podcast">Podcast</option>
+                    <option value="autre">Autre</option>
+                </select>
+            </div>
+            <div>
+                <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">Nom du lien * <small>(unique)</small></label>
+                <input type="text" name="link_name" placeholder="ex: arnaud, quentin, bio, post-jan..." required style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
             </div>
             <div>
                 <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">URL de destination *</label>
                 <input type="url" name="destination_url" placeholder="https://www.skool.com/..." required style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
             </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;align-items:end">
             <div>
                 <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">UTM Source</label>
-                <input type="text" name="utm_source" placeholder="ex: youtube, linkedin, newsletter..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+                <input type="text" name="utm_source" placeholder="ex: linkedin, youtube..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
             </div>
             <div>
                 <label style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.3rem;display:block">UTM Campaign</label>
-                <input type="text" name="utm_campaign" placeholder="ex: lancement-janvier, promo-50..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+                <input type="text" name="utm_campaign" placeholder="ex: lancement-janvier, promo..." style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.6rem 1rem;border-radius:8px">
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary" style="width:100%;padding:0.6rem">Créer le lien</button>
             </div>
         </div>
-        <button type="submit" class="btn btn-primary" style="align-self:flex-start">Créer le lien</button>
+        <div id="previewUrl" style="color:var(--text-muted);font-size:0.85rem;margin-top:0.25rem"></div>
     </form>
 </div>
 
@@ -33,13 +55,14 @@
     {% if links %}
     <div class="table-wrapper">
         <table>
-            <thead><tr><th>Canal</th><th>URL de tracking</th><th>Destination</th><th>UTM Source</th><th>UTM Campaign</th><th>Clics</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Plateforme</th><th>Lien</th><th>URL de tracking</th><th>Destination</th><th>UTM Source</th><th>UTM Campaign</th><th>Clics</th><th>Actions</th></tr></thead>
             <tbody>
             {% for link in links %}
             <tr id="link-row-{{ link.id }}">
-                <td><span class="channel-badge channel-{{ link.channel }}">{{ link.channel }}</span></td>
+                <td><span class="channel-badge channel-{{ link.platform }}">{{ link.platform or '—' }}</span></td>
+                <td><strong>{{ link.channel }}</strong></td>
                 <td><code style="color:var(--accent);font-size:0.85rem;word-break:break-all" id="url-{{ link.channel }}">{{ link.url }}</code></td>
-                <td style="font-size:0.85rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ link.destination_url }}">{{ link.destination_url }}</td>
+                <td style="font-size:0.85rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ link.destination_url }}">{{ link.destination_url }}</td>
                 <td style="color:var(--text-muted)">{{ link.utm_source or '—' }}</td>
                 <td style="color:var(--text-muted)">{{ link.utm_campaign or '—' }}</td>
                 <td><strong>{{ link.clicks }}</strong></td>
@@ -53,12 +76,33 @@
         </table>
     </div>
     {% else %}
-    <p style="text-align:center;color:var(--text-muted);padding:2rem">Aucun lien créé. Utilisez le formulaire ci-dessus pour créer votre premier lien de tracking.</p>
+    <p style="text-align:center;color:var(--text-muted);padding:2rem">Aucun lien créé. Utilisez le formulaire ci-dessus.</p>
     {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
+// Live URL preview
+const platformSelect = document.querySelector('[name="platform"]');
+const linkNameInput = document.querySelector('[name="link_name"]');
+const preview = document.getElementById('previewUrl');
+
+function updatePreview() {
+    const p = platformSelect.value;
+    const n = linkNameInput.value.toLowerCase().replace(/[^a-z0-9-_]/g, '');
+    let slug = '';
+    if (p && n) slug = p + '-' + n;
+    else if (n) slug = n;
+    else if (p) slug = p;
+    if (slug) {
+        preview.innerHTML = '🔗 URL générée : <strong style="color:var(--accent)">' + window.location.origin + '/go/' + slug + '</strong>';
+    } else {
+        preview.textContent = '';
+    }
+}
+platformSelect.addEventListener('change', updatePreview);
+linkNameInput.addEventListener('input', updatePreview);
+
 function copyLink(ch) {
     navigator.clipboard.writeText(document.getElementById('url-'+ch).textContent).then(() => {
         event.target.textContent = '✅';
@@ -67,16 +111,12 @@ function copyLink(ch) {
 }
 
 function deleteLink(id, channel) {
-    if (!confirm(`⚠️ Supprimer le lien "${channel}" ?\n\nAttention : la suppression est DÉFINITIVE.\nToutes les données de clics associées seront aussi supprimées.`)) return;
-
-    fetch(`/api/links/${id}/delete`, {method: 'POST'})
+    if (!confirm('⚠️ Supprimer le lien "' + channel + '" ?\n\nAttention : la suppression est DÉFINITIVE.\nToutes les données de clics associées seront aussi supprimées.')) return;
+    fetch('/api/links/' + id + '/delete', {method: 'POST'})
         .then(r => r.json())
         .then(d => {
-            if (d.ok) {
-                document.getElementById('link-row-' + id).remove();
-            } else {
-                alert('Erreur: ' + (d.error || 'inconnue'));
-            }
+            if (d.ok) document.getElementById('link-row-' + id).remove();
+            else alert('Erreur: ' + (d.error || 'inconnue'));
         });
 }
 </script>
