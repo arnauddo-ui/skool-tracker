@@ -704,14 +704,25 @@ def links_page():
     db = get_db()
 
     if request.method == "POST":
-        channel = request.form.get("channel_name", "").strip().lower()
-        channel = "".join(c for c in channel if c.isalnum() or c in "-_")
+        platform = request.form.get("platform", "").strip().lower()
+        link_name = request.form.get("link_name", "").strip().lower()
+        link_name = "".join(c for c in link_name if c.isalnum() or c in "-_")
         dest_url = request.form.get("destination_url", "").strip()
         utm_source = request.form.get("utm_source", "").strip()
         utm_campaign = request.form.get("utm_campaign", "").strip()
 
-        if not channel:
-            flash("Nom de canal requis", "error")
+        # Build the slug: platform-linkname or just linkname
+        if platform and link_name:
+            slug = f"{platform}-{link_name}"
+        elif link_name:
+            slug = link_name
+        elif platform:
+            slug = platform
+        else:
+            slug = ""
+
+        if not slug:
+            flash("Nom du lien requis", "error")
         elif not dest_url:
             flash("URL de destination requise", "error")
         else:
@@ -719,19 +730,18 @@ def links_page():
                 dest_url = "https://" + dest_url
             try:
                 db.execute(
-                    "INSERT INTO tracking_links (channel, destination_url, utm_source, utm_campaign, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (channel, dest_url, utm_source, utm_campaign, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
+                    "INSERT INTO tracking_links (channel, platform, destination_url, utm_source, utm_campaign, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (slug, platform, dest_url, utm_source, utm_campaign, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"))
                 )
-                # Also add to custom_channels if not exists
                 try:
                     db.execute("INSERT INTO custom_channels (name, created_at) VALUES (?, ?)",
-                        (channel, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")))
+                        (slug, datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")))
                 except Exception:
                     pass
                 db.commit()
-                flash(f"Lien « {channel} » créé !", "success")
+                flash(f"Lien « {slug} » créé !", "success")
             except Exception:
-                flash(f"Le canal « {channel} » existe déjà.", "error")
+                flash(f"Le lien « {slug} » existe déjà. Changez le nom pour le rendre unique.", "error")
 
     base_url = request.host_url.rstrip("/")
     links = db.execute("SELECT * FROM tracking_links ORDER BY created_at DESC").fetchall()
@@ -742,7 +752,9 @@ def links_page():
         click_counts[row["channel"]] = row["cnt"]
 
     links_data = [{
-        "id": l["id"], "channel": l["channel"], "destination_url": l["destination_url"],
+        "id": l["id"], "channel": l["channel"],
+        "platform": l["platform"] if "platform" in l.keys() else l["channel"],
+        "destination_url": l["destination_url"],
         "utm_source": l["utm_source"], "utm_campaign": l["utm_campaign"],
         "url": f"{base_url}/go/{l['channel']}", "clicks": click_counts.get(l["channel"], 0),
         "created_at": l["created_at"]
