@@ -74,6 +74,7 @@ def init_db(app):
             CREATE TABLE IF NOT EXISTS tracking_links (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channel TEXT NOT NULL UNIQUE,
+                platform TEXT DEFAULT '',
                 destination_url TEXT NOT NULL,
                 utm_source TEXT DEFAULT '',
                 utm_campaign TEXT DEFAULT '',
@@ -98,5 +99,17 @@ def init_db(app):
             );
         """)
         db.commit()
+
+        # Migration: add platform column if missing (for existing databases)
+        try:
+            db.execute("SELECT platform FROM tracking_links LIMIT 1")
+        except Exception:
+            db.execute("ALTER TABLE tracking_links ADD COLUMN platform TEXT DEFAULT ''")
+            # Backfill platform from channel name for existing links
+            for row in db.execute("SELECT id, channel FROM tracking_links").fetchall():
+                ch = row["channel"].split("-")[0] if "-" in row["channel"] else row["channel"]
+                db.execute("UPDATE tracking_links SET platform = ? WHERE id = ?", (ch, row["id"]))
+            db.commit()
+
         close_db()
     app.teardown_appcontext(close_db)
