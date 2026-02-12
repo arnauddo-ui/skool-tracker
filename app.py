@@ -808,10 +808,72 @@ def api_clicks():
 
     total = sum(r["cnt"] for r in by_channel)
 
+    # Platform grouping: map each channel to its platform
+    platform_map = {}
+    links = db.execute("SELECT channel, platform FROM tracking_links").fetchall()
+    ch_to_platform = {}
+    for l in links:
+        p = l["platform"] if l["platform"] else l["channel"]
+        ch_to_platform[l["channel"]] = p
+
+    by_platform = {}
+    for r in by_channel:
+        p = ch_to_platform.get(r["channel"], r["channel"])
+        by_platform[p] = by_platform.get(p, 0) + r["cnt"]
+    by_platform = dict(sorted(by_platform.items(), key=lambda x: -x[1]))
+
+    # Daily by platform
+    daily_by_platform = {}
+    for day, channels in daily_map.items():
+        daily_by_platform[day] = {}
+        for ch, cnt in channels.items():
+            p = ch_to_platform.get(ch, ch)
+            daily_by_platform[day][p] = daily_by_platform[day].get(p, 0) + cnt
+
+    # Attribution: match clicks to member signups within 48h window
+    # For each member, find clicks that happened 0-48h before their join date
+    attribution = {}
+    members = db.execute(
+        "SELECT joined_at, price, ltv, recurring_interval FROM members WHERE status = 'active' AND email NOT LIKE '__no_email_%'"
+    ).fetchall()
+
+    for m in members:
+        if not m["joined_at"]:
+            continue
+        # Look for clicks within 48h before member joined
+        window_start = m["joined_at"][:19]  # trim to seconds
+        clicks_before = db.execute("""
+            SELECT channel FROM clicks
+            WHERE clicked_at <= ? AND clicked_at >= DATETIME(?, '-48 hours')
+            ORDER BY clicked_at DESC LIMIT 1
+        """, (window_start, window_start)).fetchone()
+
+        if clicks_before:
+            ch = clicks_before["channel"]
+            p = ch_to_platform.get(ch, ch)
+            if p not in attribution:
+                attribution[p] = {"signups": 0, "paid": 0, "ltv": 0, "mrr": 0}
+            attribution[p]["signups"] += 1
+            if m["ltv"] and m["ltv"] > 0:
+                attribution[p]["paid"] += 1
+                attribution[p]["ltv"] += m["ltv"]
+                if m["recurring_interval"] == "month":
+                    attribution[p]["mrr"] += m["price"]
+                elif m["recurring_interval"] == "year":
+                    attribution[p]["mrr"] += m["price"] / 12
+
+    # Round MRR
+    for p in attribution:
+        attribution[p]["mrr"] = round(attribution[p]["mrr"], 2)
+        attribution[p]["ltv"] = round(attribution[p]["ltv"], 2)
+
     return jsonify({
         "total": total,
         "by_channel": {r["channel"]: r["cnt"] for r in by_channel},
-        "daily_by_channel": daily_map
+        "by_platform": by_platform,
+        "daily_by_channel": daily_map,
+        "daily_by_platform": daily_by_platform,
+        "attribution": attribution
     })
 
 
